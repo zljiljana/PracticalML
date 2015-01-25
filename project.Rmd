@@ -1,0 +1,101 @@
+---
+title: "Human Activity Recognition - Weight Lifting Excercise Analysis"
+author: "Ljiljana"
+date: "January 25, 2015"
+output: html_document
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset). 
+
+The training data for this project are available here: 
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here: 
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+## Data preprocessing
+
+```{r}
+# loading the needed libraries
+library(caret)
+library(randomForest)
+set.seed(342)
+# loading the data
+training <- read.csv("pml-training.csv", header = TRUE)
+testing  <- read.csv('pml-testing.csv')
+```
+
+After observing the raw training data, we realize there is a number of actions to be taken to transform it into a fully usable set:
+
+- training set contains the rows which are a summary for a given time window, they are to be removed (rows where the value of new_window equals "no"),
+- remove non-relevant columns for classification (x, user name, time stamp values, etc.),
+- removing columns with all NAs,
+- removing near-zero-variance predictors
+
+```{r}
+training <- training[training$new_window == "no", ]
+# removing irrelevant columns
+training<-training[, 7:ncol(training)]
+testing<-testing[, 7:ncol(testing)]
+# removing the columns with all missing values
+training<-training[, colSums(is.na(training)) == 0]
+#testing <-testing[,colSums(is.na(testing)) == 0]
+# removing near-zero-variance predictors
+NZV <- nearZeroVar(training)
+training <- training[-NZV]
+# let's take a look at the dimensionality of our datasets
+dim(training)
+dim(testing)
+```
+
+## Building the model
+
+We will use random forests as predictors. This methods is one of the most popular and easy to implement algorithm for building prediction models. We will split the data 75/25 [%] to get a sense of how well our model is doing on unseen data.
+
+```{r}
+# partitioning the training data
+inTrain <- createDataPartition(training$classe, p=0.75, list = FALSE)
+train <- training[inTrain,]
+test <- training[-inTrain,]
+# build the random forest model
+rf.modelFit <- randomForest(classe ~ ., data=train)
+```
+
+A confusion matrix was built to determine the error on test data.
+
+```{r}
+rf.accuracy <- confusionMatrix(test$classe, predict(rf.modelFit, newdata = test))
+rf.accuracy
+```
+
+The confusion matrix and overall statistics tell us the random forest model is highly robust and accurate. 
+
+## Cross-validation tuning
+
+To further improve the obtained model and more importantly, to avoid over-fitting, we will use cross-validation with 5 folds. We expect to see high accuracies here as well, however the baseline accuracy is already very high so the improvement can not be big.
+
+```{r}
+rf.modelFit.CV <- randomForest(classe ~ .,  data=train, cv.folds = 5)
+```
+
+Final cross validation accuracy obtained:
+
+```{r}
+rf.accuracy.CV <- confusionMatrix(test$classe, predict(rf.modelFit.CV, newdata = test))
+rf.accuracy.CV
+```
+
+As was expected, the cross-validation on random forests obtained just slightly higher accuracy than baseline model did. 
+
+## Final test-set classification
+
+```{r}
+predictions <- predict(rf.modelFit.CV, newdata=testing)
+predictions
+```
+
+We are highly confident the model will achieve near 100% accuracy on given testing set.
